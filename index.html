@@ -1,0 +1,537 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>CYBERTOJI XMD — Pairing</title>
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Share+Tech+Mono&family=Rajdhani:wght@300;400;600&display=swap" rel="stylesheet"/>
+  <style>
+    :root {
+      --cyan:   #00f5ff;
+      --green:  #00ff88;
+      --red:    #ff003c;
+      --dark:   #010a0f;
+      --card:   rgba(0,245,255,0.04);
+      --border: rgba(0,245,255,0.15);
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--dark);
+      font-family: 'Rajdhani', sans-serif;
+      color: #cceeff;
+      min-height: 100vh;
+      overflow-x: hidden;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+    }
+
+    /* ── CANVAS BACKGROUND ── */
+    #bg { position: fixed; inset: 0; z-index: 0; }
+
+    /* ── SCAN LINE OVERLAY ── */
+    body::after {
+      content: '';
+      position: fixed; inset: 0; z-index: 1;
+      background: repeating-linear-gradient(
+        0deg,
+        transparent,
+        transparent 2px,
+        rgba(0,0,0,0.08) 2px,
+        rgba(0,0,0,0.08) 4px
+      );
+      pointer-events: none;
+    }
+
+    /* ── MAIN WRAPPER ── */
+    .wrapper {
+      position: relative; z-index: 2;
+      width: 100%; max-width: 480px;
+      padding: 24px 16px;
+      display: flex; flex-direction: column; align-items: center; gap: 32px;
+    }
+
+    /* ── LOGO ── */
+    .logo-area { text-align: center; }
+
+    .logo-icon {
+      width: 80px; height: 80px;
+      border: 2px solid var(--cyan);
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      margin: 0 auto 16px;
+      position: relative;
+      animation: pulse-ring 2s ease-in-out infinite;
+      box-shadow: 0 0 20px rgba(0,245,255,0.3), inset 0 0 20px rgba(0,245,255,0.05);
+    }
+    .logo-icon::before {
+      content: '';
+      position: absolute; inset: -6px;
+      border: 1px solid rgba(0,245,255,0.2);
+      border-radius: 50%;
+      animation: pulse-ring 2s ease-in-out infinite 0.5s;
+    }
+    .logo-icon svg { width: 36px; height: 36px; fill: var(--cyan); }
+
+    @keyframes pulse-ring {
+      0%, 100% { box-shadow: 0 0 20px rgba(0,245,255,0.3), inset 0 0 20px rgba(0,245,255,0.05); }
+      50% { box-shadow: 0 0 40px rgba(0,245,255,0.6), inset 0 0 30px rgba(0,245,255,0.1); }
+    }
+
+    .logo-title {
+      font-family: 'Orbitron', sans-serif;
+      font-size: 22px; font-weight: 900;
+      letter-spacing: 4px;
+      background: linear-gradient(90deg, var(--cyan), var(--green));
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+      text-shadow: none;
+    }
+    .logo-sub {
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 11px; letter-spacing: 3px;
+      color: rgba(0,245,255,0.5);
+      margin-top: 4px;
+    }
+
+    /* ── STATUS BAR ── */
+    .status-bar {
+      width: 100%;
+      display: flex; gap: 8px;
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 10px; letter-spacing: 1px;
+      color: rgba(0,245,255,0.4);
+    }
+    .status-item {
+      flex: 1; padding: 6px 10px;
+      border: 1px solid var(--border);
+      background: var(--card);
+      display: flex; align-items: center; gap: 6px;
+    }
+    .status-dot {
+      width: 6px; height: 6px; border-radius: 50%;
+      background: var(--green);
+      animation: blink 1.5s ease-in-out infinite;
+    }
+    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.2} }
+
+    /* ── CARD ── */
+    .card {
+      width: 100%;
+      border: 1px solid var(--border);
+      background: var(--card);
+      backdrop-filter: blur(10px);
+      padding: 32px 28px;
+      position: relative;
+      overflow: hidden;
+    }
+    .card::before {
+      content: '';
+      position: absolute; top: 0; left: 0; right: 0;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, var(--cyan), transparent);
+    }
+
+    .card-label {
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 10px; letter-spacing: 3px;
+      color: rgba(0,245,255,0.4);
+      margin-bottom: 24px;
+      display: flex; align-items: center; gap: 8px;
+    }
+    .card-label::after {
+      content: ''; flex: 1; height: 1px;
+      background: var(--border);
+    }
+
+    /* ── INPUT ── */
+    .input-group { margin-bottom: 20px; position: relative; }
+    .input-group label {
+      display: block;
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 10px; letter-spacing: 2px;
+      color: rgba(0,245,255,0.5);
+      margin-bottom: 8px;
+    }
+    .input-wrap { position: relative; }
+    .input-wrap::before {
+      content: '+';
+      position: absolute; left: 14px; top: 50%; transform: translateY(-50%);
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 14px; color: var(--cyan);
+    }
+    input[type="text"] {
+      width: 100%;
+      background: rgba(0,245,255,0.03);
+      border: 1px solid var(--border);
+      color: var(--cyan);
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 15px; letter-spacing: 2px;
+      padding: 14px 14px 14px 30px;
+      outline: none;
+      transition: border-color 0.3s, box-shadow 0.3s;
+      -webkit-appearance: none;
+    }
+    input[type="text"]::placeholder { color: rgba(0,245,255,0.2); }
+    input[type="text"]:focus {
+      border-color: var(--cyan);
+      box-shadow: 0 0 20px rgba(0,245,255,0.15);
+    }
+
+    /* ── BUTTON ── */
+    .btn {
+      width: 100%;
+      padding: 16px;
+      background: transparent;
+      border: 1px solid var(--cyan);
+      color: var(--cyan);
+      font-family: 'Orbitron', sans-serif;
+      font-size: 12px; font-weight: 700;
+      letter-spacing: 4px;
+      cursor: pointer;
+      position: relative; overflow: hidden;
+      transition: color 0.3s;
+    }
+    .btn::before {
+      content: '';
+      position: absolute; inset: 0;
+      background: var(--cyan);
+      transform: translateX(-101%);
+      transition: transform 0.3s ease;
+    }
+    .btn:hover::before { transform: translateX(0); }
+    .btn:hover { color: var(--dark); }
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    .btn:disabled::before { transform: translateX(-101%) !important; }
+    .btn span { position: relative; z-index: 1; }
+
+    /* ── LOADING ── */
+    .loading {
+      display: none;
+      align-items: center; justify-content: center; gap: 10px;
+      padding: 16px;
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 12px; letter-spacing: 2px;
+      color: var(--cyan);
+    }
+    .loading.active { display: flex; }
+    .spinner {
+      width: 18px; height: 18px;
+      border: 2px solid rgba(0,245,255,0.2);
+      border-top-color: var(--cyan);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── CODE DISPLAY ── */
+    .code-section {
+      display: none;
+      flex-direction: column; gap: 16px;
+    }
+    .code-section.active { display: flex; }
+
+    .code-box {
+      text-align: center;
+      padding: 24px;
+      border: 1px solid rgba(0,255,136,0.3);
+      background: rgba(0,255,136,0.04);
+      position: relative;
+    }
+    .code-box::before {
+      content: '';
+      position: absolute; top: 0; left: 0; right: 0; height: 1px;
+      background: linear-gradient(90deg, transparent, var(--green), transparent);
+    }
+    .code-label {
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 10px; letter-spacing: 3px;
+      color: rgba(0,255,136,0.5);
+      margin-bottom: 12px;
+    }
+    .code-value {
+      font-family: 'Orbitron', sans-serif;
+      font-size: 28px; font-weight: 900;
+      letter-spacing: 8px;
+      color: var(--green);
+      text-shadow: 0 0 20px rgba(0,255,136,0.5);
+      animation: code-glow 2s ease-in-out infinite;
+    }
+    @keyframes code-glow {
+      0%,100% { text-shadow: 0 0 20px rgba(0,255,136,0.5); }
+      50% { text-shadow: 0 0 40px rgba(0,255,136,0.9), 0 0 80px rgba(0,255,136,0.3); }
+    }
+
+    .copy-btn {
+      background: transparent;
+      border: 1px solid rgba(0,255,136,0.3);
+      color: rgba(0,255,136,0.7);
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 11px; letter-spacing: 2px;
+      padding: 8px 20px;
+      cursor: pointer;
+      margin-top: 12px;
+      transition: all 0.2s;
+    }
+    .copy-btn:hover {
+      background: rgba(0,255,136,0.1);
+      border-color: var(--green);
+      color: var(--green);
+    }
+
+    .steps {
+      font-family: 'Rajdhani', sans-serif;
+      font-size: 13px; line-height: 1.8;
+      color: rgba(204,238,255,0.6);
+      border-left: 2px solid var(--border);
+      padding-left: 14px;
+    }
+    .steps strong { color: var(--cyan); }
+
+    /* ── ALERT ── */
+    .alert {
+      display: none;
+      padding: 12px 16px;
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 11px; letter-spacing: 1px;
+    }
+    .alert.error {
+      display: flex; gap: 8px; align-items: center;
+      border: 1px solid rgba(255,0,60,0.4);
+      background: rgba(255,0,60,0.06);
+      color: #ff6680;
+    }
+    .alert.success {
+      display: flex; gap: 8px; align-items: center;
+      border: 1px solid rgba(0,255,136,0.4);
+      background: rgba(0,255,136,0.06);
+      color: var(--green);
+    }
+
+    /* ── FOOTER ── */
+    .footer {
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 10px; letter-spacing: 2px;
+      color: rgba(0,245,255,0.2);
+      text-align: center;
+    }
+
+    /* ── CORNER DECORATIONS ── */
+    .corner {
+      position: absolute;
+      width: 12px; height: 12px;
+    }
+    .corner.tl { top: -1px; left: -1px; border-top: 2px solid var(--cyan); border-left: 2px solid var(--cyan); }
+    .corner.tr { top: -1px; right: -1px; border-top: 2px solid var(--cyan); border-right: 2px solid var(--cyan); }
+    .corner.bl { bottom: -1px; left: -1px; border-bottom: 2px solid var(--cyan); border-left: 2px solid var(--cyan); }
+    .corner.br { bottom: -1px; right: -1px; border-bottom: 2px solid var(--cyan); border-right: 2px solid var(--cyan); }
+  </style>
+</head>
+<body>
+
+<canvas id="bg"></canvas>
+
+<div class="wrapper">
+
+  <!-- LOGO -->
+  <div class="logo-area">
+    <div class="logo-icon">
+      <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+        <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 14H9V8h2v8zm4 0h-2V8h2v8z"/>
+      </svg>
+    </div>
+    <div class="logo-title">CYBERTOJI XMD</div>
+    <div class="logo-sub">WHATSAPP BOT · PAIRING SYSTEM</div>
+  </div>
+
+  <!-- STATUS -->
+  <div class="status-bar">
+    <div class="status-item"><div class="status-dot"></div>SERVEUR EN LIGNE</div>
+    <div class="status-item"><div class="status-dot"></div>SYSTÈME PRÊT</div>
+    <div class="status-item"><div class="status-dot"></div>SECURE</div>
+  </div>
+
+  <!-- CARD -->
+  <div class="card">
+    <div class="corner tl"></div><div class="corner tr"></div>
+    <div class="corner bl"></div><div class="corner br"></div>
+
+    <div class="card-label">◈ CONNEXION BOT</div>
+
+    <!-- FORM -->
+    <div id="form-section">
+      <div class="input-group">
+        <label>NUMÉRO WHATSAPP</label>
+        <div class="input-wrap">
+          <input type="text" id="phone" placeholder="2291234567890" maxlength="20" autocomplete="off"/>
+        </div>
+      </div>
+      <button class="btn" id="btn-pair" onclick="generateCode()">
+        <span>GÉNÉRER LE CODE</span>
+      </button>
+    </div>
+
+    <!-- LOADING -->
+    <div class="loading" id="loading">
+      <div class="spinner"></div>
+      GÉNÉRATION EN COURS...
+    </div>
+
+    <!-- ALERT -->
+    <div class="alert" id="alert"></div>
+
+    <!-- CODE SECTION -->
+    <div class="code-section" id="code-section">
+      <div class="code-box">
+        <div class="code-label">▸ TON CODE D'APPAIRAGE</div>
+        <div class="code-value" id="code-display">----</div>
+        <button class="copy-btn" onclick="copyCode()">⊕ COPIER</button>
+      </div>
+      <div class="steps">
+        <strong>1.</strong> Ouvre WhatsApp sur ton téléphone<br>
+        <strong>2.</strong> Paramètres → Appareils liés<br>
+        <strong>3.</strong> Lier un appareil → Lier avec numéro<br>
+        <strong>4.</strong> Entre ce code · Le bot se connecte ✓
+      </div>
+      <button class="btn" onclick="reset()" style="border-color:rgba(0,245,255,0.3);color:rgba(0,245,255,0.5);font-size:10px;padding:10px">
+        <span>↺ NOUVEAU CODE</span>
+      </button>
+    </div>
+
+  </div>
+
+  <div class="footer">© CYBERTOJI XMD 2026 · DEV DOSTOEVSKY TECHX</div>
+</div>
+
+<script>
+// ── PARTICLE CANVAS ──────────────────────────────────────────────────────────
+const canvas = document.getElementById('bg');
+const ctx = canvas.getContext('2d');
+let W, H, particles = [];
+
+function resize() {
+  W = canvas.width = window.innerWidth;
+  H = canvas.height = window.innerHeight;
+}
+resize();
+window.addEventListener('resize', resize);
+
+function Particle() {
+  this.x = Math.random() * W;
+  this.y = Math.random() * H;
+  this.vx = (Math.random() - 0.5) * 0.3;
+  this.vy = (Math.random() - 0.5) * 0.3;
+  this.r = Math.random() * 1.5 + 0.3;
+  this.alpha = Math.random() * 0.5 + 0.1;
+}
+
+for (let i = 0; i < 120; i++) particles.push(new Particle());
+
+function drawBg() {
+  ctx.clearRect(0, 0, W, H);
+  // Grid
+  ctx.strokeStyle = 'rgba(0,245,255,0.03)';
+  ctx.lineWidth = 1;
+  const gSize = 60;
+  for (let x = 0; x < W; x += gSize) { ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,H); ctx.stroke(); }
+  for (let y = 0; y < H; y += gSize) { ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke(); }
+
+  // Particles + connections
+  particles.forEach(p => {
+    p.x += p.vx; p.y += p.vy;
+    if (p.x < 0) p.x = W; if (p.x > W) p.x = 0;
+    if (p.y < 0) p.y = H; if (p.y > H) p.y = 0;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+    ctx.fillStyle = `rgba(0,245,255,${p.alpha})`;
+    ctx.fill();
+  });
+
+  particles.forEach((a, i) => {
+    particles.slice(i+1).forEach(b => {
+      const d = Math.hypot(a.x-b.x, a.y-b.y);
+      if (d < 100) {
+        ctx.beginPath();
+        ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y);
+        ctx.strokeStyle = `rgba(0,245,255,${0.08*(1-d/100)})`;
+        ctx.lineWidth = 0.5;
+        ctx.stroke();
+      }
+    });
+  });
+
+  requestAnimationFrame(drawBg);
+}
+drawBg();
+
+// ── LOGIC ────────────────────────────────────────────────────────────────────
+let currentCode = '';
+
+async function generateCode() {
+  const phone = document.getElementById('phone').value.replace(/\D/g, '');
+  if (!phone || phone.length < 7) {
+    showAlert('error', '⚠ Entre un numéro valide (ex: 22912345678)');
+    return;
+  }
+
+  showForm(false);
+  showLoading(true);
+  hideAlert();
+
+  try {
+    const res = await fetch('/api/pair', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ phone })
+    });
+    const data = await res.json();
+
+    if (!res.ok || !data.code) throw new Error(data.error || 'Erreur serveur');
+
+    currentCode = data.code;
+    showLoading(false);
+    document.getElementById('code-display').textContent = data.code;
+    document.getElementById('code-section').classList.add('active');
+
+  } catch(e) {
+    showLoading(false);
+    showForm(true);
+    showAlert('error', '✕ ' + e.message);
+  }
+}
+
+function copyCode() {
+  if (!currentCode) return;
+  navigator.clipboard.writeText(currentCode).then(() => {
+    const btn = document.querySelector('.copy-btn');
+    btn.textContent = '✓ COPIÉ !';
+    setTimeout(() => btn.textContent = '⊕ COPIER', 2000);
+  });
+}
+
+function reset() {
+  document.getElementById('code-section').classList.remove('active');
+  document.getElementById('phone').value = '';
+  showForm(true);
+  hideAlert();
+  currentCode = '';
+}
+
+function showForm(v) { document.getElementById('form-section').style.display = v ? '' : 'none'; }
+function showLoading(v) { document.getElementById('loading').classList.toggle('active', v); }
+function hideAlert() { document.getElementById('alert').className = 'alert'; document.getElementById('alert').textContent = ''; }
+function showAlert(type, msg) {
+  const el = document.getElementById('alert');
+  el.className = 'alert ' + type;
+  el.textContent = msg;
+}
+
+// Enter key
+document.getElementById('phone').addEventListener('keydown', e => {
+  if (e.key === 'Enter') generateCode();
+});
+</script>
+</body>
+</html>
