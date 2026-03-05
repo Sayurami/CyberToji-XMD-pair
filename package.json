@@ -2,11 +2,17 @@
   "name": "cybertoji-pair",
   "version": "2.0.0",
   "description": "CyberToji XMD — Système de Pairing Multi-Users",
-  "type": "module",
+  "type": "commonjs",
+  "main": "api/pair.js",
+  "scripts": {
+    "start": "echo 'Use Vercel for deployment'",
+    "dev": "vercel dev"
+  },
   "dependencies": {
-    "@whiskeysockets/baileys": "^v7.0.0-rc.9",
+    "@whiskeysockets/baileys": "^7.0.0",
     "awesome-phonenumber": "^5.9.0",
-    "pino": "^9.5.0"
+    "pino": "^9.5.0",
+    "archiver": "^7.0.0"
   },
   "engines": {
     "node": ">=18.0.0"
