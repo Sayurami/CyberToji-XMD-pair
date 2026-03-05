@@ -4,6 +4,7 @@ const express = require('express');
 const router = express.Router();
 const pino = require("pino");
 const archiver = require("archiver");
+
 const sessionSockets = new Map();
 
 process.on("uncaughtException", console.log);
@@ -54,66 +55,27 @@ const sock = makeWASocket({
     browser: ["Ubuntu", "Chrome", "20.0.04"]
 });
 
-if (!sock.heartbeat) {
-    sock.heartbeat = setInterval(async () => {
-        try {
-            if (!sock?.ws?.socket) return;
-            if (sock.ws.socket.readyState !== 1) return;
-            await sock.sendPresenceUpdate("available");
-        } catch {}
-    }, 25000);
-}
-
 if (sessionKey) {
     sessionSockets.set(sessionKey, sock);
 }
 
 /*
 ====================================================
-MESSAGE HANDLER
+CREDENTIAL SAVE
 ====================================================
 */
 
-sock.ev.on("messages.upsert", async (chatUpdate) => {
-    try {
-        if (!chatUpdate?.messages) return;
-        await handleMessages(sock, chatUpdate, true);
-    } catch (err) {
-        console.log("Runtime handler error:", err);
-    }
-});
-
 sock.ev.on("creds.update", saveCreds);
+
+/*
+====================================================
+CONNECTION HANDLER
+====================================================
+*/
 
 sock.ev.on("connection.update", async (update) => {
 
     const { connection, lastDisconnect } = update;
-
-    if (connection === "open") {
-
-        await new Promise(r => setTimeout(r, 2000));
-
-        if (!state?.creds?.me?.id) return;
-
-        const cleanNumber =
-            state.creds.me.id.split(":")[0];
-
-        const trackFile = "./data/paired_users.json";
-        let users = [];
-
-        try {
-            users = JSON.parse(fs.readFileSync(trackFile, "utf8"));
-        } catch {
-            users = [];
-        }
-
-        if (!users.some(u => u.number === cleanNumber)) {
-            users.push({ number: cleanNumber });
-            fs.writeFileSync(trackFile, JSON.stringify(users, null, 2));
-        }
-
-        console.log("✅ Session Connected:", cleanNumber);
-    }
 
     if (connection === "close") {
 
@@ -123,15 +85,19 @@ sock.ev.on("connection.update", async (update) => {
         sessionSockets.delete(sessionKey);
 
         if (status !== DisconnectReason.loggedOut) {
+
             setTimeout(() => {
                 startSocket(sessionPath, sessionKey);
             }, 5000);
+
         } else {
+
             if (fs.existsSync(sessionPath)) {
                 fs.rmSync(sessionPath, { recursive: true, force: true });
             }
         }
     }
+
 });
 
 return sock;
@@ -191,7 +157,7 @@ try {
 
     console.log("Pairing Error:", err);
 
-    return res.json({
+    return res.status(500).json({
         error: "Service Unavailable"
     });
 }
@@ -206,61 +172,67 @@ DOWNLOAD SESSION (ZIP)
 
 router.get('/download', async (req, res) => {
 
-    const number = req.query.number;
+const number = req.query.number;
 
-    if (!number)
-        return res.json({ error: "Number required" });
+if (!number)
+    return res.json({ error: "Number required" });
 
-    const sessionPath = path.join(SESSION_ROOT, number);
+const sessionPath = path.join(SESSION_ROOT, number);
 
-    if (!fs.existsSync(sessionPath))
-        return res.json({ error: "Session not found" });
+if (!fs.existsSync(sessionPath))
+    return res.json({ error: "Session not found" });
 
-    const zipPath = path.join(SESSION_ROOT, `${number}.zip`);
+const zipPath = path.join(SESSION_ROOT, `${number}.zip`);
+
+await new Promise((resolve, reject) => {
 
     const output = fs.createWriteStream(zipPath);
     const archive = archiver("zip", { zlib: { level: 9 } });
 
     archive.pipe(output);
     archive.directory(sessionPath, false);
-    await archive.finalize();
 
-    output.on("close", () => {
+    output.on("close", resolve);
+    archive.on("error", reject);
 
-        res.download(zipPath, `${number}.zip`, () => {
-            if (fs.existsSync(zipPath)) {
-                fs.unlinkSync(zipPath);
-            }
-        });
+    archive.finalize();
 
-    });
+});
+
+res.download(zipPath, `${number}.zip`, () => {
+    if (fs.existsSync(zipPath)) {
+        fs.unlinkSync(zipPath);
+    }
+});
 
 });
 
 /*
 ====================================================
-AUTO RESTORE
+AUTO RESTORE SESSIONS
 ====================================================
 */
 
 setTimeout(async () => {
-    try {
 
-        const folders = fs.readdirSync(SESSION_ROOT);
+try {
 
-        for (const number of folders) {
+    const folders = fs.readdirSync(SESSION_ROOT);
 
-            const sessionPath = path.join(SESSION_ROOT, number);
+    for (const number of folders) {
 
-            if (fs.lstatSync(sessionPath).isDirectory()) {
-                console.log("🔄 Restoring:", number);
-                await startSocket(sessionPath, number);
-            }
+        const sessionPath = path.join(SESSION_ROOT, number);
+
+        if (fs.lstatSync(sessionPath).isDirectory()) {
+            console.log("🔄 Restoring:", number);
+            await startSocket(sessionPath, number);
         }
-
-    } catch (err) {
-        console.log("Session restore error:", err);
     }
+
+} catch (err) {
+    console.log("Session restore error:", err);
+}
+
 }, 5000);
 
 module.exports = router;
