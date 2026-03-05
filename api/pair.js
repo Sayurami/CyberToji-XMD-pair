@@ -1,115 +1,266 @@
-// api/pair.js — Vercel Serverless Function
-// Génère un pairing code WhatsApp via Baileys
+const fs = require('fs');
+const path = require('path');
+const express = require('express');
+const router = express.Router();
+const pino = require("pino");
+const archiver = require("archiver");
+const sessionSockets = new Map();
 
-import makeWASocket, {
-  useMultiFileAuthState,
-  fetchLatestBaileysVersion,
-  DisconnectReason
-} from 'bail-lite';
-import pino from 'pino';
-import { promises as fs } from 'fs';
-import path from 'path';
-import os from 'os';
+process.on("uncaughtException", console.log);
+process.on("unhandledRejection", console.log);
 
-// Sessions stockées en mémoire (Vercel est stateless — voir note ci-dessous)
-const sessions = new Map();
+const {
+default: makeWASocket,
+useMultiFileAuthState,
+fetchLatestBaileysVersion,
+makeCacheableSignalKeyStore,
+DisconnectReason
+} = require("@whiskeysockets/baileys");
 
-export default async function handler(req, res) {
-  // CORS
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-  if (req.method === 'OPTIONS') return res.status(200).end();
+/*
+====================================================
+CONFIG
+====================================================
+*/
 
-  if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Méthode non autorisée' });
-  }
+const SESSION_ROOT = "./session_pair";
 
-  const { phone } = req.body || {};
-
-  if (!phone || typeof phone !== 'string') {
-    return res.status(400).json({ error: 'Numéro de téléphone requis' });
-  }
-
-  // Nettoyer le numéro
-  const cleanPhone = phone.replace(/\D/g, '');
-  if (cleanPhone.length < 7 || cleanPhone.length > 15) {
-    return res.status(400).json({ error: 'Numéro invalide' });
-  }
-
-  try {
-    const code = await getPairingCode(cleanPhone);
-    return res.status(200).json({ code, phone: cleanPhone });
-  } catch (err) {
-    console.error('[PAIR ERROR]', err.message);
-    return res.status(500).json({ error: err.message || 'Erreur lors de la génération du code' });
-  }
+if (!fs.existsSync(SESSION_ROOT)) {
+    fs.mkdirSync(SESSION_ROOT, { recursive: true });
 }
 
-async function getPairingCode(phone) {
-  // Dossier temporaire pour la session
-  const sessionDir = path.join(os.tmpdir(), 'cybertoji_pair_' + phone);
-  await fs.mkdir(sessionDir, { recursive: true });
+/*
+====================================================
+SOCKET STARTER
+====================================================
+*/
 
-  return new Promise(async (resolve, reject) => {
-    const timeout = setTimeout(() => {
-      reject(new Error('Timeout — réessaie dans quelques secondes'));
-    }, 30000);
+async function startSocket(sessionPath, sessionKey) {
 
+const { version } = await fetchLatestBaileysVersion();
+
+const { state, saveCreds } =
+    await useMultiFileAuthState(sessionPath);
+
+const sock = makeWASocket({
+    version,
+    logger: pino({ level: "silent" }),
+    printQRInTerminal: false,
+    keepAliveIntervalMs: 5000,
+    auth: {
+        creds: state.creds,
+        keys: makeCacheableSignalKeyStore(state.keys)
+    },
+    browser: ["Ubuntu", "Chrome", "20.0.04"]
+});
+
+if (!sock.heartbeat) {
+    sock.heartbeat = setInterval(async () => {
+        try {
+            if (!sock?.ws?.socket) return;
+            if (sock.ws.socket.readyState !== 1) return;
+            await sock.sendPresenceUpdate("available");
+        } catch {}
+    }, 25000);
+}
+
+if (sessionKey) {
+    sessionSockets.set(sessionKey, sock);
+}
+
+/*
+====================================================
+MESSAGE HANDLER
+====================================================
+*/
+
+sock.ev.on("messages.upsert", async (chatUpdate) => {
     try {
-      const { state, saveCreds } = await useMultiFileAuthState(sessionDir);
-      const { version } = await fetchLatestBaileysVersion();
+        if (!chatUpdate?.messages) return;
+        await handleMessages(sock, chatUpdate, true);
+    } catch (err) {
+        console.log("Runtime handler error:", err);
+    }
+});
 
-      const sock = makeWASocket({
-        version,
-        auth: state,
-        printQRInTerminal: false,
-        logger: pino({ level: 'silent' }),
-        browser: ['CYBERTOJI XMD', 'Chrome', '120.0'],
-      });
+sock.ev.on("creds.update", saveCreds);
 
-      sock.ev.on('creds.update', saveCreds);
+sock.ev.on("connection.update", async (update) => {
 
-      // Générer le code dès que le socket est prêt
-      sock.ev.on('connection.update', async (update) => {
-        const { connection, lastDisconnect } = update;
+    const { connection, lastDisconnect } = update;
 
-        if (connection === 'open') {
-          // Déjà connecté — pas besoin de code
-          clearTimeout(timeout);
-          sock.end();
-          reject(new Error('Ce numéro est déjà connecté'));
-          return;
+    if (connection === "open") {
+
+        await new Promise(r => setTimeout(r, 2000));
+
+        if (!state?.creds?.me?.id) return;
+
+        const cleanNumber =
+            state.creds.me.id.split(":")[0];
+
+        const trackFile = "./data/paired_users.json";
+        let users = [];
+
+        try {
+            users = JSON.parse(fs.readFileSync(trackFile, "utf8"));
+        } catch {
+            users = [];
         }
 
-        // Générer le pairing code
-        if (!sock.authState.creds.registered) {
-          try {
-            await new Promise(r => setTimeout(r, 2000)); // attendre l'init
-            const code = await sock.requestPairingCode(phone);
-            clearTimeout(timeout);
-            // Formater le code: XXXX-XXXX
-            const formatted = code?.match(/.{1,4}/g)?.join('-') || code;
-            sock.end();
-            resolve(formatted);
-          } catch (e) {
-            clearTimeout(timeout);
-            sock.end();
-            reject(new Error('Impossible de générer le code: ' + e.message));
-          }
+        if (!users.some(u => u.number === cleanNumber)) {
+            users.push({ number: cleanNumber });
+            fs.writeFileSync(trackFile, JSON.stringify(users, null, 2));
         }
 
-        if (connection === 'close') {
-          const code = lastDisconnect?.error?.output?.statusCode;
-          if (code !== DisconnectReason.loggedOut) {
-            // Reconnexion normale, ignorer
-          }
+        console.log("✅ Session Connected:", cleanNumber);
+    }
+
+    if (connection === "close") {
+
+        const status =
+            lastDisconnect?.error?.output?.statusCode;
+
+        sessionSockets.delete(sessionKey);
+
+        if (status !== DisconnectReason.loggedOut) {
+            setTimeout(() => {
+                startSocket(sessionPath, sessionKey);
+            }, 5000);
+        } else {
+            if (fs.existsSync(sessionPath)) {
+                fs.rmSync(sessionPath, { recursive: true, force: true });
+            }
         }
-      });
+    }
+});
+
+return sock;
+}
+
+/*
+====================================================
+PAIR PAGE
+====================================================
+*/
+
+router.get('/', (req, res) => {
+    res.sendFile(process.cwd() + "/pair.html");
+});
+
+/*
+====================================================
+PAIR CODE API
+====================================================
+*/
+
+router.get('/code', async (req, res) => {
+
+try {
+
+    let number = req.query.number;
+
+    if (!number)
+        return res.json({ error: "Number Required" });
+
+    number = number.replace(/[^0-9]/g, '');
+
+    const sessionPath =
+        path.join(SESSION_ROOT, number);
+
+    if (fs.existsSync(sessionPath)) {
+        fs.rmSync(sessionPath, { recursive: true, force: true });
+    }
+
+    fs.mkdirSync(sessionPath, { recursive: true });
+
+    sessionSockets.delete(number);
+
+    const sock = await startSocket(sessionPath, number);
+
+    await new Promise(r => setTimeout(r, 2000));
+
+    const code =
+        await sock.requestPairingCode(number);
+
+    return res.json({
+        code: code?.match(/.{1,4}/g)?.join("-") || code,
+        download: `/download?number=${number}`
+    });
+
+} catch (err) {
+
+    console.log("Pairing Error:", err);
+
+    return res.json({
+        error: "Service Unavailable"
+    });
+}
+
+});
+
+/*
+====================================================
+DOWNLOAD SESSION (ZIP)
+====================================================
+*/
+
+router.get('/download', async (req, res) => {
+
+    const number = req.query.number;
+
+    if (!number)
+        return res.json({ error: "Number required" });
+
+    const sessionPath = path.join(SESSION_ROOT, number);
+
+    if (!fs.existsSync(sessionPath))
+        return res.json({ error: "Session not found" });
+
+    const zipPath = path.join(SESSION_ROOT, `${number}.zip`);
+
+    const output = fs.createWriteStream(zipPath);
+    const archive = archiver("zip", { zlib: { level: 9 } });
+
+    archive.pipe(output);
+    archive.directory(sessionPath, false);
+    await archive.finalize();
+
+    output.on("close", () => {
+
+        res.download(zipPath, `${number}.zip`, () => {
+            if (fs.existsSync(zipPath)) {
+                fs.unlinkSync(zipPath);
+            }
+        });
+
+    });
+
+});
+
+/*
+====================================================
+AUTO RESTORE
+====================================================
+*/
+
+setTimeout(async () => {
+    try {
+
+        const folders = fs.readdirSync(SESSION_ROOT);
+
+        for (const number of folders) {
+
+            const sessionPath = path.join(SESSION_ROOT, number);
+
+            if (fs.lstatSync(sessionPath).isDirectory()) {
+                console.log("🔄 Restoring:", number);
+                await startSocket(sessionPath, number);
+            }
+        }
 
     } catch (err) {
-      clearTimeout(timeout);
-      reject(err);
+        console.log("Session restore error:", err);
     }
-  });
-}
+}, 5000);
+
+module.exports = router;
